@@ -1,103 +1,166 @@
 # Operations Notes
 
-Use this file for runbooks, alert notes, rollout decisions, and recovery
-procedures.
-
-The reviewer should learn what an operator sees, what they do next, and which
-commands prove the system recovered. Keep commands concrete enough to run from a
-fresh checkout.
+Operator-facing runbook for the local freshness CLI. Commands assume a fresh
+checkout and Python 3.11+.
 
 ## Fresh-checkout commands
 
-List setup, test, smoke, stale-feed, unknown-data, and recovery commands with
-expected output.
+Prerequisites:
 
-Minimum runtime requirement: Python 3.11+. CI should run the same core checks:
-setup or install, tests, smoke, and candidate documentation validation.
+```text
+Python 3.11+
+make
+POSIX shell
+```
 
-Minimum implementation scope:
-
-- Local setup and validation commands work from a fresh checkout.
-- Operators can inspect healthy, stale, unknown, and recovered states.
-- Stale and unknown data fail closed for unsafe actions.
-- Fresh unaffected feeds remain eligible during a `bravo` failure.
-- Recovery is a rerunnable command or workflow with clear evidence.
-- CI/CD evidence covers setup or install, tests, smoke, and docs validation.
-- Runbooks and alerts describe only behavior the local evidence exercises.
-
-Starter path:
+If `python3` on PATH is older than 3.11, point `PYTHON` at a 3.11+ binary:
 
 ```sh
-make setup
+PYTHON="$(command -v python3.11 || uv python find 3.11)" make setup
 make test
 make smoke
+make docs-check
+```
+
+Healthy status:
+
+```sh
+.venv/bin/python -m sre_work_sample.cli status --state data/healthy.json
+```
+
+Expected healthy outcome: `overall_status=eligible`, empty `unsafe_feeds`, and
+all feeds `freshness_status=fresh` with `safe_to_serve=true`.
+
+CI should run the same core checks: install or setup, tests, smoke, and docs
+validation via `.github/workflows/validate.yml`.
+
+## Stale-feed scenario
+
+Trigger:
+
+```sh
 .venv/bin/python -m sre_work_sample.cli scenario stale \
   --feed bravo \
   --output /tmp/bravo-stale.json
+```
+
+Detect:
+
+```sh
 .venv/bin/python -m sre_work_sample.cli status --state /tmp/bravo-stale.json
-.venv/bin/python -m sre_work_sample.cli scenario unknown \
-  --feed bravo \
-  --output /tmp/bravo-unknown.json
-.venv/bin/python -m sre_work_sample.cli status --state /tmp/bravo-unknown.json
+```
+
+Expected detection signal:
+
+- `overall_status=restricted`
+- `unsafe_feeds=["bravo"]`
+- `bravo.freshness_status=stale`
+- `bravo.safe_to_serve=false`
+- blocked reason references age exceeding `max_age_seconds`
+- blocked actions: `price_order`, `publish_signal`, `rebalance_position`
+- allowed on `bravo`: `read_last_price`, `serve_cached_status`
+- `alpha` and `charlie` remain `safe_to_serve=true`
+
+Recover:
+
+```sh
 .venv/bin/python -m sre_work_sample.cli recover \
   --feed bravo \
   --state /tmp/bravo-stale.json \
   --output /tmp/bravo-recovered.json
+.venv/bin/python -m sre_work_sample.cli status --state /tmp/bravo-recovered.json
 ```
 
-## Stale-feed scenario
-
-For the implemented stale-feed scenario, include:
-
-- Trigger command.
-- Detection signal.
-- State transition.
-- Blocked unsafe actions.
-- Actions that remain allowed.
-- Recovery command.
-- Evidence location.
+Evidence location: `evidence/04-stale-scenario.json`,
+`evidence/05-stale-status.json`, `evidence/08-recover-scenario.json`,
+`evidence/09-recovered-status.json`.
 
 ## Unknown tick-age scenario
 
-For the implemented unknown-data scenario, include:
+Trigger:
 
-- Trigger command.
-- Detection signal with `freshness_status=unknown`.
-- `safe_to_serve=false`.
-- Blocked unsafe actions: `price_order`, `publish_signal`, and
-  `rebalance_position`.
-- Operator-readable blocked reason.
-- Confirmation that `alpha` and `charlie` remain eligible.
-- Recovery command or operator decision.
-- Evidence location.
+```sh
+.venv/bin/python -m sre_work_sample.cli scenario unknown \
+  --feed bravo \
+  --output /tmp/bravo-unknown.json
+.venv/bin/python -m sre_work_sample.cli status --state /tmp/bravo-unknown.json
+```
+
+Expected detection signal:
+
+- `bravo.freshness_status=unknown`
+- `bravo.last_tick_age_seconds=null`
+- `bravo.safe_to_serve=false`
+- blocked reason: `last tick age is unknown`
+- blocked actions: `price_order`, `publish_signal`, `rebalance_position`
+- `alpha` and `charlie` remain eligible
+
+Operator decision: keep unsafe `bravo` work blocked until tick age is known and
+fresh again. Do not infer freshness from process liveness alone.
+
+Evidence location: `evidence/06-unknown-scenario.json`,
+`evidence/07-unknown-status.json`.
 
 Expected-state contract:
 
 | State | Operational expectation |
 | --- | --- |
 | Healthy feeds | No unsafe feeds and no blocked reason. |
-| Stale `bravo` | Unsafe actions blocked because tick age exceeds threshold. |
-| Unknown `bravo` tick age | Unsafe actions blocked because tick age is missing. |
-| Partial availability | Operators can continue safe work for unaffected feeds. |
-| Recovered `bravo` | Eligibility restored and incident can close with evidence. |
+| Stale `bravo` | Unsafe actions blocked by age threshold. |
+| Unknown `bravo` tick age | Unsafe actions blocked by missing age. |
+| Partial availability | Safe work continues for unaffected feeds. |
+| Recovered `bravo` | Eligibility restored with re-check evidence. |
 
 ## Bad configuration and rollback
 
-Describe one bad configuration or rollout-safety scenario. Keep it scoped to the
-freshness service. Include detection, blast radius, rollback decision, and
-evidence that would prove rollback worked.
+Scenario: someone ships `max_age_seconds` as `0`, negative, boolean, float, or
+string. That is a broken gate, not a feed failure.
+
+Detection: `evaluate_system` raises `ValueError` matching
+`invalid max_age_seconds` before any feed is marked safe. Covered by
+`tests/test_freshness.py::test_invalid_max_age_fails_closed`.
+
+Blast radius: evaluation fails closed globally until config is corrected. This
+is preferred over silently treating all feeds as fresh under a broken threshold.
+
+Rollback:
+
+1. Restore known-good state from `data/healthy.json` or the previous valid
+   fixture.
+2. Re-run `status` and `make smoke`.
+3. Keep unsafe actions blocked while the gate is invalid.
+
+Proof of rollback: `status` returns `overall_status=eligible` against restored
+healthy state, and pytest/smoke pass.
 
 ## Alerts and operator actions
 
-For each alert, include threshold, severity, owner, and first action.
+Stale feed pages:
 
-At minimum, include:
+- Threshold: tick age > `max_age_seconds` and no recovery within 5 minutes
+- Severity: page
+- Owner: on-call SRE + feed owner
+- First action: block unsafe actions, run status, open incident
 
-- A page-worthy stale-data alert.
-- A non-page warning or ticket threshold.
+Freshness warning ticket:
 
-Reviewer focus areas are reliability model, incident response, automation,
-CI/CD and recovery, observability and actionability, and tradeoffs and
-restraint.
+- Threshold: tick age crosses 50% of `max_age_seconds`
+- Severity: ticket
+- Owner: feed owner
+- First action: investigate source lag; do not page yet
 
-Don't include alerts that your local evidence never exercises.
+Unknown tick age:
+
+- Threshold: `last_tick_age_seconds` is null while process is alive
+- Severity: page
+- Owner: on-call SRE
+- First action: fail closed; treat as unsafe until age is known
+
+SLIs for this sample:
+
+- Freshness SLI: share of feeds with `freshness_status=fresh`.
+- Liveness SLI: share of feeds with `alive=true`.
+
+These alerts map only to states the local evidence exercises: healthy, stale,
+unknown, partial availability, and recovery. Structured evidence is JSON status
+output plus captured files under `evidence/`.

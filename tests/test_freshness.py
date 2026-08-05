@@ -1,3 +1,5 @@
+import pytest
+
 from sre_work_sample.freshness import (
     UNSAFE_ACTIONS,
     evaluate_system,
@@ -61,3 +63,12 @@ def test_unknown_feed_is_actionable_error() -> None:
         assert "unknown feed" in str(error)
     else:
         raise AssertionError("expected unknown feed to raise ValueError")
+
+
+@pytest.mark.parametrize("max_age", [0, -1, True, "90", 90.5, None])
+def test_invalid_max_age_fails_closed(max_age: object) -> None:
+    state = healthy_state()
+    state["max_age_seconds"] = max_age
+
+    with pytest.raises(ValueError, match="invalid max_age_seconds"):
+        evaluate_system(state)

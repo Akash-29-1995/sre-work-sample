@@ -37,6 +37,22 @@ def healthy_state() -> dict[str, Any]:
     }
 
 
+def resolve_max_age_seconds(state: dict[str, Any]) -> int:
+    """Resolve and validate the freshness threshold from state.
+
+    Invalid thresholds fail closed before any feed is marked safe to serve.
+    """
+    if "max_age_seconds" not in state:
+        return DEFAULT_MAX_AGE_SECONDS
+
+    max_age = state["max_age_seconds"]
+    if isinstance(max_age, bool) or not isinstance(max_age, int) or max_age <= 0:
+        raise ValueError(
+            f"invalid max_age_seconds={max_age!r}; expected a positive integer"
+        )
+    return max_age
+
+
 def evaluate_feed(feed: dict[str, Any], max_age_seconds: int) -> FeedStatus:
     """Evaluate one feed without depending on wall-clock time."""
     name = str(feed["name"])
@@ -94,7 +110,7 @@ def evaluate_feed(feed: dict[str, Any], max_age_seconds: int) -> FeedStatus:
 
 def evaluate_system(state: dict[str, Any]) -> dict[str, Any]:
     """Evaluate all feeds and return a JSON-safe operator view."""
-    max_age = int(state.get("max_age_seconds", DEFAULT_MAX_AGE_SECONDS))
+    max_age = resolve_max_age_seconds(state)
     feeds = [evaluate_feed(feed, max_age) for feed in state.get("feeds", [])]
     unsafe = [feed.name for feed in feeds if not feed.safe_to_serve]
 

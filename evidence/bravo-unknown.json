@@ -1,0 +1,20 @@
+{
+  "feeds": [
+    {
+      "alive": true,
+      "last_tick_age_seconds": 8,
+      "name": "alpha"
+    },
+    {
+      "alive": true,
+      "last_tick_age_seconds": null,
+      "name": "bravo"
+    },
+    {
+      "alive": true,
+      "last_tick_age_seconds": 7,
+      "name": "charlie"
+    }
+  ],
+  "max_age_seconds": 90
+}

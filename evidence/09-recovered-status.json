@@ -1,0 +1,55 @@
+{
+  "feeds": [
+    {
+      "alive": true,
+      "allowed_actions": [
+        "read_last_price",
+        "serve_cached_status",
+        "price_order",
+        "publish_signal",
+        "rebalance_position"
+      ],
+      "blocked_actions": [],
+      "blocked_reason": null,
+      "freshness_status": "fresh",
+      "last_tick_age_seconds": 8,
+      "name": "alpha",
+      "safe_to_serve": true
+    },
+    {
+      "alive": true,
+      "allowed_actions": [
+        "read_last_price",
+        "serve_cached_status",
+        "price_order",
+        "publish_signal",
+        "rebalance_position"
+      ],
+      "blocked_actions": [],
+      "blocked_reason": null,
+      "freshness_status": "fresh",
+      "last_tick_age_seconds": 5,
+      "name": "bravo",
+      "safe_to_serve": true
+    },
+    {
+      "alive": true,
+      "allowed_actions": [
+        "read_last_price",
+        "serve_cached_status",
+        "price_order",
+        "publish_signal",
+        "rebalance_position"
+      ],
+      "blocked_actions": [],
+      "blocked_reason": null,
+      "freshness_status": "fresh",
+      "last_tick_age_seconds": 7,
+      "name": "charlie",
+      "safe_to_serve": true
+    }
+  ],
+  "max_age_seconds": 90,
+  "overall_status": "eligible",
+  "unsafe_feeds": []
+}

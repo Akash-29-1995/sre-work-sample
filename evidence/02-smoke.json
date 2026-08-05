@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "healthy feeds eligible",
+    "stale bravo fails closed",
+    "unknown data fails closed",
+    "alpha and charlie remain eligible",
+    "bravo recovery restores eligibility"
+  ],
+  "smoke": "passed"
+}

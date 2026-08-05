@@ -1,0 +1,5 @@
+{
+  "feed": "bravo",
+  "scenario": "stale",
+  "state": "evidence/bravo-stale.json"
+}

@@ -1,6 +1,7 @@
 .PHONY: setup test smoke docs-check clean
 
-PYTHON ?= python3
+# Prefer an explicit Python 3.11+ binary when available on PATH.
+PYTHON ?= $(shell command -v python3.11 2>/dev/null || echo python3)
 VENV ?= .venv
 
 setup:

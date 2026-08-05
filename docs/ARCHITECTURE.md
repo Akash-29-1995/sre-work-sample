@@ -1,68 +1,100 @@
 # Architecture Notes
 
-Use this file to explain the freshness service you built. The reviewer should
-learn what runs locally, where state lives, and which tradeoffs are intentional.
+Local Python 3.11+ CLI that evaluates market-data freshness for three fictional
+feeds: `alpha`, `bravo`, and `charlie`. No exchanges, brokers, or cloud services
+are used. Reviewers should start with `make setup`, `make test`, and `make
+smoke`.
 
-## Explain the local system shape
+## Local system shape
 
-Cover:
+- Runtime: Python 3.11+ with an editable install from `pyproject.toml`.
+- Package: `src/sre_work_sample/` with model logic in `freshness.py` and CLI in
+  `cli.py`.
+- State: JSON fixtures. Healthy baseline is `data/healthy.json`; scenario
+  commands write deterministic state files under `/tmp` or `evidence/`.
+- Control surface:
+  - `status` evaluates eligibility
+  - `scenario stale|unknown` creates failure states
+  - `recover` restores a feed to a fresh age
+  - `smoke` proves the hard-path contract
+- Threshold: `max_age_seconds` defaults to 90. Invalid thresholds raise before
+  any feed is treated as safe.
+- Observability: stable sorted JSON on stdout plus pytest and smoke output.
+- CI minimum: install, pytest, smoke, and `scripts/validate_candidate_docs.py`.
 
-- Runtime prerequisite: Python 3.11+.
-- Command-line surface and any extra local control surface.
-- The three feeds: `alpha`, `bravo`, and `charlie`.
-- State or fixture storage.
-- Freshness threshold and bad-configuration assumptions.
-- Observability path: command output, logs, metrics, screenshots, or workflow
-  output.
-- CI minimum: setup, tests, smoke, and candidate documentation validation.
+Minimum scope stays local and reviewable: health model, fail-closed decisions,
+recovery, tests, smoke, CI, and operating notes.
 
-Minimum implementation scope is intentionally small: a local runnable freshness
-model, deterministic scenario commands, tests, smoke validation, CI evidence,
-and written operating notes. Do not substitute future platform plans for the
-local behavior.
+## Liveness versus eligibility
 
-## Separate liveness from eligibility
+The model answers two different questions:
 
-Document how the system answers two different questions:
+- **Liveness (`alive`)**: can the feed consumer answer at all?
+- **Eligibility (`safe_to_serve`)**: may unsafe downstream work continue?
 
-- **Liveness:** can the feed consumer answer?
-- **Safe-to-serve eligibility:** may unsafe downstream work continue?
+Exposed fields:
 
-Use the same field names the implementation exposes. At minimum, cover `alive`,
-`last_tick_age_seconds`, `freshness_status`, `safe_to_serve`,
-`allowed_actions`, and `blocked_reason`.
+| Field | Meaning |
+| --- | --- |
+| `alive` | Process reachability for the feed consumer. |
+| `last_tick_age_seconds` | Age of the newest known tick, or `null` if unknown. |
+| `freshness_status` | `fresh`, `stale`, or `unknown`. |
+| `safe_to_serve` | Whether unsafe actions may continue for that feed. |
+| `allowed_actions` | Actions still permitted. |
+| `blocked_actions` | Actions refused while the feed is unsafe. |
+| `blocked_reason` | Operator-readable reason for refusal. |
+
+Decision order for one feed:
+
+1. If not alive: `freshness_status=unknown`, fail closed.
+2. If tick age is missing: `freshness_status=unknown`, fail closed.
+3. If age exceeds `max_age_seconds`: `freshness_status=stale`, fail closed.
+4. Otherwise: fresh and safe to serve.
+
+Canonical unsafe actions: `price_order`, `publish_signal`, `rebalance_position`.
+They can create irreversible trading impact from stale or unknown marks, so they
+are blocked whenever eligibility fails. Read-only actions such as
+`read_last_price`, `serve_cached_status`, and `inspect_status` remain available
+for diagnosis.
 
 Expected-state contract:
 
-| State | Required architecture behavior |
+| State | Architecture behavior |
 | --- | --- |
-| Healthy feeds | All feeds are fresh and safe to serve. |
-| Stale `bravo` | `bravo` fails closed, with a reason tied to age threshold. |
-| Unknown `bravo` tick age | `bravo` fails closed, with a reason tied to missing age. |
-| Partial availability | `alpha` and `charlie` stay eligible while `bravo` is unsafe. |
-| Recovered `bravo` | Recovery returns the system to eligible status. |
+| Healthy feeds | All feeds fresh and `safe_to_serve=true`. |
+| Stale `bravo` | `bravo` blocked with age-threshold reason. |
+| Unknown `bravo` tick age | `bravo` blocked with missing-age reason. |
+| Partial availability | Fresh `alpha` and `charlie` stay eligible. |
+| Recovered `bravo` | System returns to `overall_status=eligible`. |
 
-Canonical unsafe actions are `price_order`, `publish_signal`, and
-`rebalance_position`. Explain why those actions must be blocked for stale or
-unknown data and which read-only or inspection actions remain safe.
+## Feed boundaries
 
-## Describe feed boundaries
+Each feed is an independent consumer identity in the state file. Freshness is
+evaluated per feed. One stale feed restricts only that feed's unsafe actions.
+This keeps blast radius narrow: a `bravo` incident does not require freezing
+healthy `alpha` or `charlie` work.
 
-Describe what makes one feed distinct from another. Include identity,
-configuration, dependency boundary, health-state ownership, and blast-radius
-assumptions.
+Configuration boundary is `max_age_seconds` plus per-feed `alive` and
+`last_tick_age_seconds`. Bad threshold config fails before eligibility is
+computed, so operators cannot silently serve under a broken gate.
 
-## State design tradeoffs
+## Design tradeoffs
 
-List the important choices you made and why. Separate implemented behavior from
-future production work.
+Implemented now:
 
-Reviewers will evaluate five senior dimensions:
+- Deterministic ages in JSON instead of wall-clock sampling.
+- Fail closed on unknown age rather than guessing freshness.
+- Partial availability instead of all-or-nothing cluster shutdown.
+- Small CLI and unittest/pytest surface instead of a service mesh.
 
-- Reliability model.
-- Incident response.
-- Automation, CI/CD, and recovery.
-- Observability and actionability.
-- Tradeoffs and restraint.
+Intentionally not built:
 
-Don't turn future production ideas into implemented claims.
+- Real market-data ingestion, brokers, or exchange APIs.
+- Kubernetes, Terraform, DNS, or cloud deploy gates.
+- Restart-only recovery without a re-evaluated fresh state.
+- Broad platform telemetry stacks beyond JSON status and CI.
+
+Senior evaluation focus maps to this local proof: reliability model in
+`freshness.py`, incident path in `INCIDENT_NOTE.md` and `docs/OPERATIONS.md`,
+automation via Makefile/CI/smoke, observability via JSON status fields, and
+restraint in what remains out of scope.
