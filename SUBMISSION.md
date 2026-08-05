@@ -74,8 +74,13 @@ Evidence files:
 - `evidence/03-healthy-status.json`
 
 CI minimum: `.github/workflows/validate.yml` installs the package and runs
-pytest, smoke, and docs validation. A public workflow run URL will be attached
-after this branch is pushed to a GitHub fork.
+pytest, smoke, and docs validation.
+
+GitHub Actions run (success):
+https://github.com/Akash-29-1995/sre-work-sample/actions/runs/31045140537
+
+Fork repository:
+https://github.com/Akash-29-1995/sre-work-sample
 
 ## 3. Minimum implementation scope
 
@@ -179,7 +184,10 @@ Evidence: `evidence/06-unknown-scenario.json`, `evidence/07-unknown-status.json`
 
 Workflow file: `.github/workflows/validate.yml`
 
-Steps:
+Successful run:
+https://github.com/Akash-29-1995/sre-work-sample/actions/runs/31045140537
+
+Steps in that run:
 
 1. checkout
 2. setup Python 3.11
@@ -188,9 +196,8 @@ Steps:
 5. smoke
 6. candidate docs validation
 
-Local CI parity was validated with `make test`, `make smoke`, and
-`make docs-check`. After fork/push, replace this sentence with the Actions run
-URL.
+Repository:
+https://github.com/Akash-29-1995/sre-work-sample
 
 ## 8. Observability and alerting
 
